@@ -1,1 +1,9 @@
 lab
+mongo
+models
+eye_dota/__pycache__
+eye_dota/dependencies/__pycache__
+eye_dota/routers/__pycache__
+eye_dota/schemas/__pycache__
+eye_dota/services/__pycache__
+frontend/__pycache__
