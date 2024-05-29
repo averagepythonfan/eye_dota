@@ -1,1 +1,1 @@
-from .models import PredictTotal
+from .models import PredictTotal, Match

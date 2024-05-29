@@ -1,9 +1,11 @@
-import numpy as np
+# import numpy as np
+import polars as pl
+from pydantic import ValidationError
 from typing import Annotated
 from fastapi import APIRouter, Depends
-from schemas import PredictTotal
-from services import PredictTotalModel, MongoService
-from dependencies import get_predict_total_model, get_mongo_service
+from schemas import PredictTotal, Match
+from services import PredictTotalModel, MongoService, AiohttpService
+from dependencies import get_predict_total_model, get_mongo_service, get_aiohttp_service
 
 
 main = APIRouter(
@@ -19,78 +21,135 @@ async def predict_total(
     mongo: Annotated[MongoService, Depends(get_mongo_service)]
     ):
 
-    preds = model_service.predict(
+    model_predict = model_service.predict(
         radiant_heroes=predict_data.radiant_picks,
         dire_heroes=predict_data.dire_picks
     )
-    stats = mongo.get_total_stats(
-        radiant_team_id=predict_data.radiant_team_id,
-        dire_team_id=predict_data.dire_team_id,
-        radaint_heroes=predict_data.radiant_picks,
-        dire_heroes=predict_data.dire_picks
+
+    rt_total_mean, rt_total_std, dt_total_mean, dt_total_std = mongo.get_teams_total_mean_and_std(
+        predict_data.radiant_team_id,
+        predict_data.dire_team_id
     )
-    # heroes_winrate = mongo.get_hero_stats(
-    #     radiant_team_id=predict_data.radiant_team_id,
-    #     dire_team_id=predict_data.dire_team_id,
-    #     radaint_heroes=predict_data.radiant_picks,
-    #     dire_heroes=predict_data.dire_picks
-    # )
 
-    total_preds: np.array = (stats * 0.45 + preds * 0.55).astype(np.int16)[0]
 
-    # preds: np.array = (stats * 0.55 + preds.flatten() * 0.45).astype(np.int16)
+    wilson_data = mongo.get_wilson_odds(
+        predict_data.radiant_team_id,
+        predict_data.dire_team_id,
+        predict_data.radiant_picks,
+        predict_data.dire_picks
+    )
 
-    lower = 42.5
-    upper = 54.5
-    diff = upper - lower
+    std_values = [rt_total_std, dt_total_std]
 
-    total_over_coefs = np.linspace(*predict_data.total_over_coefs, int(diff+1))
-    total_less_coefs = np.linspace(*predict_data.total_less_coefs, int(diff+1))
-    totals = np.linspace(lower, upper, int(diff+1))
+    stats_coef = 0.7
+    model_coef = 1 - stats_coef
+
+    weights = [round(stats_coef - el / sum(std_values) * stats_coef, 2) for el in std_values] + [model_coef]
+    total_preds = rt_total_mean * weights[0] + dt_total_mean * weights[1] + model_predict * weights[2]
+    total_preds = int(total_preds)
 
     lower_threshold = 3
     upper_threshold = 4
 
     total_preds = total_preds + predict_data.bias - 0.5
 
-    bank = predict_data.bank
-    bet = bank * predict_data.bet_coef
-
     total_over = total_preds - lower_threshold
     total_less = total_preds + upper_threshold
-    total_over = 54.5 if total_over > 54.5 else total_over
-    total_less = 42.5 if total_less < 42.5 else total_less
-    if 42.5 <= total_over <= 54.5:
-        ind = np.where(totals == total_over)[0][0]
-        coef_over = total_over_coefs[ind]
-    else:
-        coef_over = 0
-    if 42.5 <= total_less <= 54.5:
-        ind = np.where(totals == total_less)[0][0]
-        coef_less = total_less_coefs[ind]
-    else:
-        coef_less = 0
 
-    if coef_over > coef_less:
-        return {
-            "total_over": float(total_over),
-            "ml_predict": float(preds),
-            "stats": float(stats[0]),
-            "sum_predict": float(total_preds),
-            "total_less": float(total_less),
-            # "heroes_stats": heroes_winrate,
-            "bet": f"{bet:.2f} on total over {total_over}, coef {coef_over:.2f}",
-            "coef_less": float(coef_less)
-        }
-    else:
-        return {
-            "total_over": float(total_over),
-            "ml_predict": float(preds),
-            "stats": float(stats[0]),
-            "sum_predict": float(total_preds),
-            "total_less": float(total_less),
-            # "heroes_stats": heroes_winrate,
-            "bet": f"{bet:.2f} on total less {total_less}, coef {coef_less:.2f}",
-            "coef_over": float(coef_over)
-        }
+    result = {
+        "total_over": round(float(total_over), 2),
+        "ml_predict": round(float(model_predict), 2),
+        "sum_predict": round(float(total_preds), 2),
+        "total_less": round(float(total_less), 2),
+        "radiant_team": {
+            "mu": round(rt_total_mean, 2),
+            "sigma": round(rt_total_std, 2)
+        },
+        "dire_team": {
+            "mu": round(dt_total_mean,2),
+            "sigma": round(dt_total_std, 2)
+        },
+        "wilson_data": wilson_data
+    }
+    
+    print(result)
 
+    return result
+
+
+@main.get("/update_data")
+async def update_data(
+    mongo: Annotated[MongoService, Depends(get_mongo_service)],
+    aio: Annotated[AiohttpService, Depends(get_aiohttp_service)]
+):
+    last, end = mongo.get_dates()
+    data_json = await aio.get_matches_update_request(last_date=last, end_date=end)
+
+    data_list = list()
+    for el in data_json:
+        data = tuple(el.values())
+        data_list.append(data)
+    cols = data_json[0].keys()
+    data_T = list(zip(*data_list))
+
+    polars_schema = [
+        ("match_id", pl.Int64),
+        ("start_match", pl.Datetime(time_unit='ms')),
+        ("league_id", pl.Int64),
+        ("tier", pl.Boolean),
+        ("radiant_team_id", pl.Int64),
+        ("dire_team_id", pl.Int64),
+        ("radiant_win", pl.Boolean),
+        ("radiant_score", pl.Int32),
+        ("dire_score", pl.Int32),
+        ("duration", pl.Int32),
+        ("patch", pl.String),
+        ("gold", pl.List(inner=pl.Int32)),
+        ("xp", pl.List(inner=pl.Int32)),
+        ("picks", pl.List(inner=pl.Int32)),
+        ("players", pl.List(inner=pl.Utf8)),
+    ]
+
+    df = pl.DataFrame(data={col:data for col, data in zip(cols, data_T)}, schema=polars_schema)
+
+    for el in df['picks']:
+        if el.len() != 10:
+            df = df.filter(pl.col("picks") != el.reshape((1, el.shape[0])))
+            raise ValidationError()
+    for el in df['players']:
+        if el.len() != 10:
+            error = el
+            raise ValidationError()
+    for el in (df.null_count() == 0):
+        if el[0] is not True:
+            raise ValidationError()
+    if df.is_empty():
+        raise ValidationError()
+
+    df = df.with_columns(
+            pl.col("players").cast(pl.List(pl.Int64))
+    ).with_columns([
+            pl.col('picks').list.slice(0, 5).alias("radiant_picks"),
+            pl.col('picks').list.slice(5, 10).alias("dire_picks"),
+            pl.col("players").list.slice(0, 5).alias("radiant_players"),
+            pl.col("players").list.slice(5, 10).alias("dire_players")
+    ]).drop("picks").drop("players")
+
+    not_inserted = 0
+    for el in df.to_dicts():
+        try:
+            match_data = Match(**el)
+        except:
+            not_inserted += 1
+            continue
+        res = mongo.client.data.matches.insert_one(match_data.model_dump(by_alias=True))
+        if not res.acknowledged:
+            not_inserted += 1
+
+    update_count = mongo.reinit_patch_advantages()
+
+    return {
+        "matches_count": len(data_json),
+        "not_inserted": not_inserted,
+        "adv_update": update_count
+    }

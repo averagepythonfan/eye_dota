@@ -42,7 +42,7 @@ teams = {
     'TSM': 8260983, 'Team NP': 3214108, 'Shopify Rebellion': 39, '(monkey) Business': 2519319,
     'VP.Prodigy': 7819701, 'Business Club': 9142866, 'Team Orca': 8571960, 'Heroic': 9303484,
     'LGD Gaming': 15, 'Team Spirit': 7119388, 'BB Team': 9131584, 'BOOM Esports': 7732977,
-    'BigGooooood': 2101260, 'Virtus.pro': 1883502, 'Darkside': 8721219, 'Infinity': 8375259,
+    'BigGooooood': 2101260, 'Virtus.pro': 8724984, 'Darkside': 8721219, 'Infinity': 8375259,
     'FlyToMoon': 6953913, 'Team SMG': 8244493, 'Luna Galaxy': 8597391, 'Talon': 8597976,
     'LV-Gaming': 1848158, 'Titan': 999689, 'Evil Geniuses': 8255756, 'Newbee': 6214538,
     'Winstrike': 5229127, 'Blacklist Rivalry ': 8668460, 'w33ha earthspirit': 4251435,

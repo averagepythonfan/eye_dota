@@ -7,7 +7,7 @@ from keras.models import load_model, Sequential
 class Singleton:
     _instance = None
 
-    def __new__(cls, model_path):
+    def __new__(cls, model_path, scaler_path):
         if not isinstance(cls._instance, cls):
             cls._instance = super(__class__, cls).__new__(cls)
         return cls._instance
@@ -25,9 +25,9 @@ class PredictTotalModel(Singleton):
     ]
 
 
-    def __init__(self, model_path):
+    def __init__(self, model_path, scaler_path):
         self.model: Sequential = load_model(model_path)
-        # self.t_scaler = joblib.load(scaler_path)
+        self.t_scaler = joblib.load(scaler_path)
     
     def is_load(self):
         return True if self.model else False
@@ -42,4 +42,4 @@ class PredictTotalModel(Singleton):
         pic_vec = np.delete(pic_vec, self.index_to_delete)
 
         preds = self.model.predict(pic_vec.reshape(1, 248), verbose=0)
-        return (preds * 102).astype(np.int32).flatten()[0]
+        return self.t_scaler.inverse_transform(preds).astype(np.int32)[0][0]
