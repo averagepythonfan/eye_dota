@@ -1,5 +1,5 @@
-from services import PredictTotalModel, MongoService, AiohttpService
-from config import SCALER_PATH, MODEL_PATH, MONGO
+from services import PredictTotalModel, MongoService, AiohttpService, RidgeDurationModel
+from config import SCALER_PATH, MODEL_PATH, MONGO, RIDGE_MODEL, RIDGE_SCALER
 
 
 def get_predict_total_model():
@@ -11,3 +11,7 @@ def get_mongo_service():
 
 def get_aiohttp_service():
     return AiohttpService()
+
+
+def get_rigde_duration():
+    return RidgeDurationModel(model_path=RIDGE_MODEL, scaler_path=RIDGE_SCALER)

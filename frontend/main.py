@@ -101,7 +101,7 @@ def show_stats(data: Dict) -> plt.figure:
     width = 0.15  
     multiplier = 0
 
-    fig, ax = plt.subplots(2, layout='constrained', figsize=(8, 8))
+    fig, ax = plt.subplots(3, layout='constrained', figsize=(8, 11))
 
     for attribute, measurement in data["wilson_data"].items():
         offset = width * multiplier
@@ -151,6 +151,54 @@ def show_stats(data: Dict) -> plt.figure:
     ax[1].legend()
     ax[1].set_xlabel("Total")
     ax[1].set_ylabel("Probability")
+
+
+    means_dur = [data["duration"]["radiant_team"]["mu"], data["duration"]["dire_team"]["mu"]]
+    std_dur_values = [data["duration"]["radiant_team"]["sigma"], data["duration"]["dire_team"]["sigma"]]
+
+    maxs_dur = []
+
+    for mu, std, style in zip(means_dur, std_dur_values, styles):
+        probabilities = scp.stats.norm.pdf(domain, mu, std)
+        maxs_dur.append(probabilities.max()/1.65)
+        ax[2].plot(domain, probabilities, style, label=f"dur $\mu={mu:.2f}$\ndur $\sigma={std:.2f}$\n")
+    
+    ax[2].plot(
+        [data["duration"]["ridge"] for _ in range(10)],
+        np.linspace(0, max(maxs_dur)*1.75, 10),
+        "-.k", label=f"Ridge predict {data['duration']['ridge']}"
+    )
+    ax[2].plot(
+        [data["duration"]["sum_dur"] for _ in range(10)],
+        np.linspace(0, max(maxs_dur)*1.75, 10),
+        "-b", label=f"Sum duration {data['duration']['sum_dur']}"
+    )
+
+    ax[2].plot(
+        [34 for _ in range(10)],
+        np.linspace(0, max(maxs_dur)*1.75, 10),
+        "-.y",
+        label=f"Dur low threshold"
+    )
+    ax[2].plot(
+        [40 for _ in range(10)],
+        np.linspace(0, max(maxs_dur)*1.75, 10),
+        "-.y",
+        label=f"Dur high threshold")
+
+    y3 = np.array([max(maxs_dur)*1.75 for _ in range(2)])
+    y4 = np.array([0, 0])
+
+    ax[2].fill_between(
+        np.array([34, 40]),
+        y3,
+        y4,
+        where=(y3 > y4), color='C1', alpha=0.3    
+    )
+
+    ax[2].legend()
+    ax[2].set_xlabel("Duration")
+    ax[2].set_ylabel("Probability")
 
     return fig
 

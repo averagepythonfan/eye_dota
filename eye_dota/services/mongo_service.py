@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from typing import Dict, Tuple
 from pymongo import MongoClient
 import polars as pl
 import numpy as np
@@ -362,22 +362,34 @@ class MongoService:
         return updated_count
 
 
-    def get_teams_total_mean_and_std(self, radiant_team_id: int, dire_team_id: int) -> Tuple[float, float, float, float]:
+    def _get_team_totals_and_durations(self, team_id: int):
 
         cur = self.client.data.matches.find({"$or": [
-            {"radiant_team_id": radiant_team_id},
-            {"dire_team_id": radiant_team_id}
-        ]}, {"radiant_score": 1, "dire_score": 1}).sort({"match_id": -1}).limit(5)
+            {"radiant_team_id": team_id},
+            {"dire_team_id": team_id}
+        ]}, {"radiant_score": 1, "dire_score": 1, "duration": 1}).sort({"match_id": -1}).limit(5)
 
-        rt = pl.DataFrame(list(cur))
-        rt_totals = rt.select(pl.col("radiant_score").add(pl.col("dire_score"))).to_numpy().flatten()
+        team = pl.DataFrame(list(cur))
+        t_totals = team.select(pl.col("radiant_score").add(pl.col("dire_score"))).to_numpy().flatten()
+        t_durations = team.select(pl.col("duration")).to_numpy().flatten()
 
-        cur = self.client.data.matches.find({"$or": [
-            {"radiant_team_id": dire_team_id},
-            {"dire_team_id": dire_team_id}
-        ]}, {"radiant_score": 1, "dire_score": 1}).sort({"match_id": -1}).limit(5)
+        return t_totals.mean(), t_totals.std(), t_durations.mean(), t_durations.std()
 
-        dt = pl.DataFrame(list(cur))
-        dt_totals = dt.select(pl.col("radiant_score").add(pl.col("dire_score"))).to_numpy().flatten()
 
-        return rt_totals.mean(), rt_totals.std(), dt_totals.mean(), dt_totals.std()
+
+    def get_teams_total_mean_and_std(self, radiant_team_id: int, dire_team_id: int) -> Dict[str, float]:
+
+        rt_total_mean, rt_total_std, rt_dur_mean, rt_dur_std = self._get_team_totals_and_durations(team_id=radiant_team_id)
+
+        dt_total_mean, dt_total_std, dt_dur_mean, dt_dur_std = self._get_team_totals_and_durations(team_id=dire_team_id)
+
+        return {
+            "rt_total_mean": rt_total_mean,
+            "rt_total_std":rt_total_std,
+            "dt_total_mean": dt_total_mean,
+            "dt_total_std": dt_total_std,
+            "rt_dur_mean": rt_dur_mean,
+            "rt_dur_std": rt_dur_std,
+            "dt_dur_mean": dt_dur_mean,
+            "dt_dur_std": dt_dur_std
+        }

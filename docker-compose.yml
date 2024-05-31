@@ -20,6 +20,8 @@ services:
       MONGO: mongodb://root:secret@mongodb:27017
       MODEL_PATH: /tmp/models/total.keras
       SCALER_PATH: /tmp/models/total_scaler.joblib
+      RIDGE_MODEL: /tmp/models/ridge_duration.joblib
+      RIDGE_SCALER: /tmp/models/ridge_scaler.joblib
     ports:
       - "9090:9090"
     volumes:
