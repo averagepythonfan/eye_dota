@@ -3,6 +3,7 @@ from typing import Dict, Tuple
 from pymongo import MongoClient
 import polars as pl
 import numpy as np
+from config import CURRENT_PATCH, DURATIONS_STATS_COEF, TOTAL_STATS_COEF
 
 
 class MongoService:
@@ -17,154 +18,11 @@ class MongoService:
         now_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
         return last_time_str, now_str
-
-
-    def get_total_stats(self,
-                        radiant_team_id: int,
-                        dire_team_id: int,
-                        radaint_heroes: list[int],
-                        dire_heroes: list[int]):
-        
-        cur = self.client.data.matches.find(
-            {"$or": [
-                {
-                    "radiant_team_id": radiant_team_id, "radiant_picks": {"$in": radaint_heroes}
-                },
-                {
-                    "dire_team_id": dire_team_id,  "dire_picks": {"$in": dire_heroes}
-                }
-            ]},
-            {"match_id": 1, "radiant_team_id": 1, "dire_team_id": 1, "radiant_score": 1, "dire_score": 1 , "radiant_win": 1}
-        )
-        data = list(cur)
-        teams_data = pl.DataFrame(data)
-
-        results = []
-        
-        with pl.SQLContext(frames={
-            "radiant": teams_data.sort("match_id", descending=True).filter(pl.col("radiant_team_id").eq(radiant_team_id)).limit(15),
-            "dire": teams_data.sort("match_id", descending=True).filter(pl.col("dire_team_id").eq(dire_team_id)).limit(15)
-        }) as ctx:
-            res = ctx.execute(f"""
-                SELECT
-                    sum(radiant_score + dire_score) / count(*) as total_mean 
-                FROM radiant
-                WHERE
-                    radiant_team_id = {radiant_team_id}
-
-                UNION
-        
-                SELECT
-                    sum(radiant_score + dire_score) / count(*) as total_mean 
-                FROM dire
-                WHERE
-                    dire_team_id = {dire_team_id}
-            """)
-            results.append(res.collect().mean().to_numpy().flatten()[0])
-        return np.array(results).astype(np.int16)
-
-
-    def get_hero_stats(self,
-                       radiant_team_id: int,
-                       dire_team_id: int,
-                       radaint_heroes: list[int],
-                       dire_heroes: list[int]) -> list[dict]:
-        
-        heroes_data = {el["id"]: el["localized_name"] for el in self.client.data.heroes.find({}, {"id": 1, "_id": 0, "localized_name": 1})}
-
-        cur = self.client.data.matches.find(
-            {"$or": [
-                {
-                    "radiant_team_id": radiant_team_id, "radiant_picks": {"$in": radaint_heroes}
-                },
-                {
-                    "dire_team_id": dire_team_id,  "dire_picks": {"$in": dire_heroes}
-                }
-            ]},
-            {
-                "radiant_team_id": 1, "dire_team_id": 1, "radiant_picks": 1, "dire_picks": 1, "radiant_win": 1
-            }
-        )
-
-        stats = pl.DataFrame(list(cur))
-
-        radiant_hero_stats = pl.DataFrame(schema=[("hero", pl.String), ("winrate", pl.Float32), ("count", pl.Int32)])
-        dire_hero_stats = pl.DataFrame(schema=[("hero", pl.String), ("winrate", pl.Float32), ("count", pl.Int32)])
-
-        for team, data in {
-            "radiant": {
-                "radiant_team_id": radiant_team_id,
-                "radiant_picks": radaint_heroes
-            },
-            "dire": {
-                "dire_team_id": dire_team_id,
-                "dire_picks": dire_heroes
-            }
-        }.items():
-            if team == "radiant":
-                team_id = data["radiant_team_id"]
-                picks = data["radiant_picks"]
-                for hero in picks:
-                    hero_stat = stats.filter([
-                        pl.col("radiant_team_id").eq(team_id),
-                        pl.col("radiant_picks").list.contains(hero)
-                    ]).select([
-                        pl.lit(heroes_data[hero]).alias("hero"),
-                        pl.col("radiant_win").mean().round(2).cast(pl.Float32).alias("winrate"),
-                        pl.col("radiant_win").count().cast(pl.Int32).alias("count")
-                    ])
-                    radiant_hero_stats.extend(hero_stat)
-            elif team == "dire":
-                team_id = data["dire_team_id"]
-                picks = data["dire_picks"]
-                for hero in picks:
-                    hero_stat = stats.filter([
-                        pl.col("dire_team_id").eq(team_id),
-                        pl.col("dire_picks").list.contains(hero)
-                    ]).select([
-                        pl.lit(heroes_data[hero]).alias("hero"),
-                        pl.col("radiant_win").not_().mean().round(2).cast(pl.Float32).alias("winrate"),
-                        pl.col("radiant_win").count().cast(pl.Int32).alias("count")
-                    ])
-                    dire_hero_stats.extend(hero_stat)
-                
-        radiant_hero_stats = pl.concat([
-            radiant_hero_stats,
-            radiant_hero_stats.select([
-                pl.lit("Over All").alias("hero"),
-                pl.col("winrate").mean().round(2),
-                pl.col("count").sum()
-            ])
-        ])
-
-        dire_hero_stats = pl.concat([
-            dire_hero_stats,
-            dire_hero_stats.select([
-                pl.lit("Over All").alias("hero"),
-                pl.col("winrate").mean().round(2),
-                pl.col("count").sum()
-            ])
-        ])
-
-        return {
-            "radiant": [
-                {
-                    "hero": el["hero"],
-                    "wr": round(el["winrate"], 2),
-                    "count": el["count"]
-                } for el in radiant_hero_stats.to_dicts()
-            ],
-            "dire": [
-                {
-                    "hero": el["hero"],
-                    "wr": round(el["winrate"], 2),
-                    "count": el["count"]
-                } for el in dire_hero_stats.to_dicts()
-            ]
-        }
-
+    
 
     def _winrate_wilson(self, matches: int, winrate: int) -> int:
+        """Return wilson winrate, requires matches count and winrate.
+        """
         if matches == 0:
             return 0
         winrate = winrate / 100 if isinstance(winrate, int) else round(winrate, 2)
@@ -294,8 +152,8 @@ class MongoService:
 
 
     def reinit_patch_advantages(self):
-        current_patch = "7.36"
-        cur = self.client.data.matches.find({"patch": current_patch}, {
+
+        cur = self.client.data.matches.find({"patch": CURRENT_PATCH}, {
             "radiant_picks": 1,
             "dire_picks": 1,
             "radiant_win": 1    
@@ -377,19 +235,54 @@ class MongoService:
 
 
 
-    def get_teams_total_mean_and_std(self, radiant_team_id: int, dire_team_id: int) -> Dict[str, float]:
+    def get_teams_total_mean_and_std(self,
+                                     radiant_team_id: int,
+                                     dire_team_id: int,
+                                     model_predict: int,
+                                     ridge_predict: int) -> Dict[str, float]:
+
+        TOTAL_BIAS = -1
+        MODEL_COEF = 1 - TOTAL_STATS_COEF
+
+        DURATION_BIAS = 2
+        ridge_coef = 1 - DURATIONS_STATS_COEF
 
         rt_total_mean, rt_total_std, rt_dur_mean, rt_dur_std = self._get_team_totals_and_durations(team_id=radiant_team_id)
-
         dt_total_mean, dt_total_std, dt_dur_mean, dt_dur_std = self._get_team_totals_and_durations(team_id=dire_team_id)
 
+        # total
+        std_values = [rt_total_std, dt_total_std]
+        weights = [round(TOTAL_STATS_COEF - el / sum(std_values) * TOTAL_STATS_COEF, 2) for el in std_values]
+        total_preds = rt_total_mean * weights[0] + dt_total_mean * weights[1] + model_predict * MODEL_COEF
+        total_preds = int(total_preds)
+
+        lower_threshold = 3
+        upper_threshold = 4
+        total_preds = total_preds + TOTAL_BIAS - 0.5
+        total_over = total_preds - lower_threshold
+        total_less = total_preds + upper_threshold
+
+        # duration
+        std_dur = [rt_dur_std, dt_dur_std]
+        weights_dur = [round(DURATIONS_STATS_COEF - el / sum(std_dur) * DURATIONS_STATS_COEF, 2) for el in std_dur]
+        dur_preds = rt_dur_mean * weights_dur[0] + dt_dur_mean * weights_dur[1] + ridge_predict * ridge_coef
+        dur_preds = int(dur_preds)
+
+        dur_preds = dur_preds + DURATION_BIAS
+
         return {
-            "rt_total_mean": rt_total_mean,
-            "rt_total_std":rt_total_std,
-            "dt_total_mean": dt_total_mean,
-            "dt_total_std": dt_total_std,
-            "rt_dur_mean": rt_dur_mean,
-            "rt_dur_std": rt_dur_std,
-            "dt_dur_mean": dt_dur_mean,
-            "dt_dur_std": dt_dur_std
+            "model_predict": round(float(model_predict), 2),
+            "ridge_predict": round(float(ridge_predict), 2),
+            "total_preds": round(float(total_preds), 2),
+            "total_over": round(float(total_over), 2),
+            "total_less": round(float(total_less), 2),
+            "rt_total_mean": round(float(rt_total_mean), 2),
+            "rt_total_std":round(float(rt_total_std), 2),
+            "dt_total_mean": round(float(dt_total_mean), 2),
+            "dt_total_std": round(float(dt_total_std), 2),
+            "dur_preds": dur_preds,
+            "rt_dur_mean": round(float(rt_dur_mean), 2),
+            "rt_dur_std": round(float(rt_dur_std), 2),
+            "dt_dur_mean": round(float(dt_dur_mean), 2),
+            "dt_dur_std": round(float(dt_dur_std), 2)
         }

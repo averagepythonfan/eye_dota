@@ -30,23 +30,24 @@ async def predict_total(
     model_service: Annotated[PredictTotalModel, Depends(get_predict_total_model)],
     mongo: Annotated[MongoService, Depends(get_mongo_service)],
     ridge: Annotated[RidgeDurationModel, Depends(get_rigde_duration)]
-    ):
+):
 
-    model_predict = model_service.predict(
+    model_predict: int = model_service.predict(
         radiant_heroes=predict_data.radiant_picks,
         dire_heroes=predict_data.dire_picks
     )
 
-    ridge_predict = ridge.predict(
+    ridge_predict: int = ridge.predict(
         radiant_heroes=predict_data.radiant_picks,
         dire_heroes=predict_data.dire_picks
     )
 
-    teams_data = mongo.get_teams_total_mean_and_std(
+    total_and_dur_data = mongo.get_teams_total_mean_and_std(
         predict_data.radiant_team_id,
-        predict_data.dire_team_id
+        predict_data.dire_team_id,
+        model_predict=model_predict,
+        ridge_predict=ridge_predict
     )
-
 
     wilson_data = mongo.get_wilson_odds(
         predict_data.radiant_team_id,
@@ -55,65 +56,33 @@ async def predict_total(
         predict_data.dire_picks
     )
 
-    std_values = [teams_data["rt_total_std"], teams_data["dt_total_std"]]
-
-    stats_coef = 0.7
-    model_coef = 1 - stats_coef
-
-    weights = [round(stats_coef - el / sum(std_values) * stats_coef, 2) for el in std_values] + [model_coef]
-    total_preds = teams_data["rt_total_mean"] * weights[0] + teams_data["dt_total_mean"] * weights[1] + model_predict * weights[2]
-    total_preds = int(total_preds)
-
-    lower_threshold = 3
-    upper_threshold = 4
-
-    total_preds = total_preds + predict_data.bias - 0.5
-
-    total_over = total_preds - lower_threshold
-    total_less = total_preds + upper_threshold
-
-    std_dur = [teams_data["rt_dur_std"], teams_data["dt_dur_std"]]
-
-    stats_dur_coef = 0.4
-    ridge_coef = 1 - stats_dur_coef
-
-    weights_dur = [round(stats_dur_coef - el / sum(std_dur) * stats_dur_coef, 2) for el in std_dur] + [ridge_coef]
-    dur_preds = teams_data["rt_dur_mean"] * weights_dur[0] + teams_data["dt_dur_mean"] * weights_dur[1] + ridge_predict * weights_dur[2]
-    dur_preds = int(dur_preds)
-
-    dur_bias = 2
-
-    dur_preds = dur_preds + dur_bias
-
     result = {
-        "total_over": round(float(total_over), 2),
-        "ml_predict": round(float(model_predict), 2),
-        "sum_predict": round(float(total_preds), 2),
-        "total_less": round(float(total_less), 2),
+        "total_over": total_and_dur_data["total_over"],
+        "ml_predict": total_and_dur_data["model_predict"],
+        "sum_predict": total_and_dur_data["total_preds"],
+        "total_less": total_and_dur_data["total_less"],
         "radiant_team": {
-            "mu": round(teams_data["rt_total_mean"], 2),
-            "sigma": round(teams_data["rt_total_std"], 2)
+            "mu": total_and_dur_data["rt_total_mean"],
+            "sigma": total_and_dur_data["rt_total_std"]
         },
         "dire_team": {
-            "mu": round(teams_data["dt_total_mean"],2),
-            "sigma": round(teams_data["dt_total_std"], 2)
+            "mu": total_and_dur_data["dt_total_mean"],
+            "sigma": total_and_dur_data["dt_total_std"]
         },
         "duration": {
-            "sum_dur": dur_preds,
-            "ridge": round(float(ridge_predict), 2),
+            "sum_dur": total_and_dur_data["dur_preds"],
+            "ridge": total_and_dur_data["ridge_predict"],
             "radiant_team": {
-                "mu": round(float(teams_data["rt_dur_mean"]),2),
-                "sigma": round(float(teams_data["rt_dur_std"]), 2),
+                "mu": total_and_dur_data["rt_dur_mean"],
+                "sigma": total_and_dur_data["rt_dur_std"],
             },
             "dire_team": {
-                "mu": round(float(teams_data["dt_dur_mean"]), 2),
-                "sigma": round(float(teams_data["dt_dur_std"]), 2),
+                "mu": total_and_dur_data["dt_dur_mean"],
+                "sigma": total_and_dur_data["dt_dur_std"],
             }
         },
         "wilson_data": wilson_data
     }
-    
-    # print(result)
 
     return result
 

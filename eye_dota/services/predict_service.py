@@ -10,8 +10,7 @@ class Singleton:
     def __new__(cls, model_path, scaler_path):
         if not isinstance(cls._instance, cls):
             cls._instance = super(__class__, cls).__new__(cls)
-        return cls._instance
-    
+        return cls._instance    
 
 
 class PredictTotalModel(Singleton):
@@ -29,8 +28,10 @@ class PredictTotalModel(Singleton):
         self.model: Sequential = load_model(model_path)
         self.t_scaler = joblib.load(scaler_path)
     
+
     def is_load(self):
         return True if self.model else False
+
 
     def predict(self, radiant_heroes: list[int], dire_heroes: list[int]):
         assert self.model is not None

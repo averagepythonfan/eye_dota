@@ -34,8 +34,8 @@ heroes = {
 
 
 teams = {
-    'Team Falcons': 9247354, 'BetBoom Team': 8255888, 'Xtreme Gaming': 8261500,
-    'Tundra Esports': 8291895, 'CyberBonch-1': 7412785, 'Team Liquid': 2163,
+    'Team Falcons': 9247354, 'BetBoom Team': 8255888, 'Xtreme Gaming': 8261500, 'KEV': 9366499,
+    'Tundra Esports': 8291895, 'CyberBonch-1': 7412785, 'Team Liquid': 2163, 'Dandelions': 9360651,
     'Azure Ray': 8574561, 'OG': 2586976, 'Gaimin Gladiators': 8599101, 'VGJ Storm': 5228654,
     'G2 x iG': 5, 'Aurora.1xBet': 9255706, '': 1333179, 'NAVI Junior': 9017006, 'MOUZ': 9338413,
     'Entity': 8605863, 'PSG.Quest': 8894818, 'Geek Fam': 4425527, 'mudgolems': 8121295,
@@ -45,7 +45,7 @@ teams = {
     'BigGooooood': 2101260, 'Virtus.pro': 8724984, 'Darkside': 8721219, 'Infinity': 8375259,
     'FlyToMoon': 6953913, 'Team SMG': 8244493, 'Luna Galaxy': 8597391, 'Talon': 8597976,
     'LV-Gaming': 1848158, 'Titan': 999689, 'Evil Geniuses': 8255756, 'Newbee': 6214538,
-    'Winstrike': 5229127, 'Blacklist Rivalry ': 8668460, 'w33ha earthspirit': 4251435,
+    'Winstrike': 5229127, 'Blacklist Rivalry ': 8668460, 'w33ha earthspirit': 4251435, 'Twisted Minds': 9368468,
     'Team Secret': 1838315, 'Mineski': 543897, 'Thunder Predator': 6382242, 'TeamMalaysia': 1910985,
     'Natus Vincere': 36, 'Team Tickles': 9187066, ' Thunder Awaken ///': 3922738, 'Nemiga Gaming': 5014799,
     'Neptune Gaming': 8204512, 'Hellbear Smashers': 8261818, 'Holy Grail': 9018710, 'SIBE Team': 9081007,
