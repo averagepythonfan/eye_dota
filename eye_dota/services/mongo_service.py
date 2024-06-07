@@ -286,3 +286,60 @@ class MongoService:
             "dt_dur_mean": round(float(dt_dur_mean), 2),
             "dt_dur_std": round(float(dt_dur_std), 2)
         }
+
+
+    def get_team_stats_for_n_last_matches(self,
+                                          radiant_team_id: int,
+                                          dire_team_id: int,
+                                          last_matches: int) -> Dict[str, list[int]]:
+        cur = self.client.data.matches.find({
+            "$or": [
+                {"radiant_team_id": {"$in": [radiant_team_id, dire_team_id]}},
+                {"dire_team_id": {"$in": [radiant_team_id, dire_team_id]}}
+            ]
+        }, {
+            "match_id": 1,
+            "radiant_team_id": 1,
+            "dire_team_id": 1,
+            "radiant_score": 1,
+            "dire_score": 1,
+            "duration": 1,
+            "gold": 1,
+            "radiant_win": 1
+        })
+
+        df = pl.DataFrame(list(cur))
+
+        data = df.select([
+            pl.col("match_id"),
+            pl.col("radiant_team_id").alias("team_id"),
+            pl.col("radiant_score").add(pl.col("dire_score")).alias("total"),
+            pl.col("duration"),
+            pl.col("radiant_win").alias("is_win")
+        ]).vstack(df.select([
+            pl.col("match_id"),
+            pl.col("dire_team_id").alias("team_id"),
+            pl.col("radiant_score").add(pl.col("dire_score")).alias("total"),
+            pl.col("duration"),
+            pl.col("radiant_win").not_().alias("is_win")
+        ]))
+
+        # radiant team lose and win
+        rtl = data.filter(pl.col("team_id").eq(radiant_team_id) & pl.col("is_win").eq(False)).sort("match_id", descending=True).limit(last_matches)
+        rtw = data.filter(pl.col("team_id").eq(radiant_team_id) & pl.col("is_win").eq(True)).sort("match_id", descending=True).limit(last_matches)
+
+        # dire team lose and win
+        dtw = data.filter(pl.col("team_id").eq(dire_team_id) & pl.col("is_win").eq(True)).sort("match_id", descending=True).limit(last_matches)
+        dtl = data.filter(pl.col("team_id").eq(dire_team_id) & pl.col("is_win").eq(False)).sort("match_id", descending=True).limit(last_matches)
+
+        return {
+            "radiant_team_lose_total": list(rtl["total"]),
+            "radiant_team_lose_duration": list(rtl["duration"]),
+            "dire_team_win_total": list(dtw["total"]),
+            "dire_team_win_duration": list(dtw["duration"]),
+
+            "radiant_team_win_total": list(rtw["total"]),
+            "radiant_team_win_duration": list(rtw["duration"]),
+            "dire_team_lose_total": list(dtl["total"]),
+            "dire_team_lose_duration": list(dtl["duration"]),
+        }

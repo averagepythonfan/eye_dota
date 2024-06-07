@@ -63,7 +63,7 @@ for el in dhero:
 
 
 bias: int = st.number_input("Bias value, default is -1", value=-1)
-
+last_matches: int = st.number_input("Last matches for team stats", value=15)
 
 # @st.cache_data
 def preditct(predict_data: PredictTotal):
@@ -202,6 +202,43 @@ def show_stats(data: Dict) -> plt.figure:
 
     return fig
 
+def show_team_stats(data: Dict):
+
+    plt.style.use('ggplot')
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    ax.scatter(data["radiant_team_lose_duration"], data["radiant_team_lose_total"], color=mcolors.CSS4_COLORS["mediumturquoise"], label="Radiant team lose")
+    ax.scatter(data["dire_team_win_duration"], data["dire_team_win_total"], color=mcolors.CSS4_COLORS["indianred"], label="Dire team win")
+
+    rldw_total = round((np.array(data["radiant_team_lose_total"] + data["dire_team_win_total"])).mean(), 2)
+
+    ax.plot(np.linspace(0, 100, 10), [rldw_total for _ in range(10)], "-.k", label=f"Total mean {rldw_total}")
+    ax.plot([round((np.array(data["radiant_team_lose_duration"] + data["dire_team_win_duration"])).mean(), 2) for _ in range(10)], np.linspace(0, 100, 10), "-.b")
+
+    ax.legend()
+    ax.set_xlabel("Duration")
+    ax.set_ylabel("Total")
+    ax.set_ylim(10, 80)
+    ax.set_xlim(10, 80)
+    ax.set_title("Radiant lose")
+
+    ax2.scatter(data["radiant_team_win_duration"], data["radiant_team_win_total"], color=mcolors.CSS4_COLORS["mediumturquoise"], label="Radiant team win")
+    ax2.scatter(data["dire_team_lose_duration"], data["dire_team_lose_total"], color=mcolors.CSS4_COLORS["indianred"], label="Dire team lose")
+
+    rwdl_total = round((np.array(data["radiant_team_win_total"] + data["dire_team_lose_total"])).mean(), 2)
+
+    ax2.plot(np.linspace(0, 100, 10), [rwdl_total for _ in range(10)], "-.k", label=f"Total mean {rwdl_total}")
+    ax2.plot([round((np.array(data["radiant_team_win_duration"] + data["dire_team_lose_duration"])).mean(), 2) for _ in range(10)], np.linspace(0, 100, 10), "-.b")
+
+    ax2.legend()
+    ax2.set_xlabel("Duration")
+    ax2.set_ylabel("Total")
+    ax2.set_ylim(10, 80)
+    ax2.set_xlim(10, 80)
+    ax2.set_title("Radiant win")
+    
+    return fig
+
 
 if len(rhero) == 5 and len(dhero) == 5:
     if st.button("Predict"):
@@ -225,3 +262,19 @@ if st.button("Update data"):
         st.json(response.json())
     else:
         st.json({"fail": response.json()})
+
+
+if radiant_team and dire_team:
+    if st.button("Team stats"):
+        resp = requests.get(
+            "http://eye_dota:9090/main/teams_data",
+            params={
+                "radiant_team_id": teams[radiant_team[0]],
+                "dire_team_id": teams[dire_team[0]],
+                "last_matches": last_matches
+                }
+        )
+        if resp.status_code == 200:
+            st.pyplot(
+                show_team_stats(resp.json())
+            )

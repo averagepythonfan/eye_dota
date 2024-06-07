@@ -163,3 +163,17 @@ async def update_data(
         "not_inserted": not_inserted,
         "adv_update": update_count
     }
+
+
+@main.get("/teams_data")
+async def update_data(
+    radiant_team_id: int,
+    dire_team_id: int,
+    last_matches: int,
+    mongo: Annotated[MongoService, Depends(get_mongo_service)]
+):
+    return mongo.get_team_stats_for_n_last_matches(
+        radiant_team_id=radiant_team_id,
+        dire_team_id=dire_team_id,
+        last_matches=last_matches
+    )
